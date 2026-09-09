@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>Sistema NACO</title>
+    <base href="/" />
+    <link rel="stylesheet" href="lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="app.css" />
+    <link rel="stylesheet" href="SistemaNacoMac.styles.css" />
+    <link rel="icon" href="data:,">
+</head>
+
+<body>
+
+    <div class="status-bar-safe-area"></div>
+
+    <div id="app">Cargando Sistema NACO…</div>
+
+    <div id="blazor-error-ui" data-nosnippet>
+        An unhandled error has occurred.
+        <a href="." class="reload">Reload</a>
+        <span class="dismiss">🗙</span>
+    </div>
+
+    <script src="_framework/blazor.webview.js" autostart="false"></script>
+    <script>
+        window.downloadText = (name, content) => {
+            const blob = new Blob([content], { type: "text/csv;charset=utf-8" });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = name;
+            link.click();
+            URL.revokeObjectURL(url);
+        };
+        window.nacoCroquis = (() => {
+            const handlers = new WeakMap();
+            return {
+                init: (element, dotnet) => {
+                    if (!element || handlers.has(element)) return;
+                    let dragging = false, startX = 0, startY = 0, left = 0, top = 0;
+                    const wheel = e => { e.preventDefault(); dotnet.invokeMethodAsync('WheelZoom', e.deltaY); };
+                    const down = e => { if (e.button !== 0) return; dragging = true; startX = e.clientX; startY = e.clientY; left = element.scrollLeft; top = element.scrollTop; element.classList.add('dragging'); element.setPointerCapture?.(e.pointerId); };
+                    const move = e => { if (!dragging) return; e.preventDefault(); element.scrollLeft = left - (e.clientX - startX); element.scrollTop = top - (e.clientY - startY); };
+                    const up = e => { dragging = false; element.classList.remove('dragging'); try { element.releasePointerCapture?.(e.pointerId); } catch {} };
+                    element.addEventListener('wheel', wheel, { passive: false });
+                    element.addEventListener('pointerdown', down); element.addEventListener('pointermove', move); element.addEventListener('pointerup', up); element.addEventListener('pointercancel', up);
+                    handlers.set(element, { wheel, down, move, up });
+                },
+                dispose: element => {
+                    const h = handlers.get(element); if (!h) return;
+                    element.removeEventListener('wheel', h.wheel); element.removeEventListener('pointerdown', h.down); element.removeEventListener('pointermove', h.move); element.removeEventListener('pointerup', h.up); element.removeEventListener('pointercancel', h.up); handlers.delete(element);
+                }
+            };
+        })();
+    </script>
+
+</body>
+
+</html>

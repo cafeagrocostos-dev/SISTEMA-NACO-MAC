@@ -1,0 +1,70 @@
+@page "/migracion"
+@inject NacoDatabase Db
+@inject AppSettings Settings
+@inject SessionState Session
+
+<div class="page-title"><div><h1>Migración y conexión</h1><p>Servidor SQL utilizado por esta Mac</p></div></div>
+<div class="form-card">
+    <div class="form-grid">
+        <label>Servidor<input @bind="server" /></label><label>Base de datos<input @bind="database" /></label>
+        <label>Usuario SQL<input @bind="sqlUser" /></label><label>Contraseña SQL<input type="password" @bind="sqlPassword" /></label>
+    </div>
+    <button class="primary" @onclick="SaveSettings">Guardar y probar conexión</button>
+</div>
+
+@if(Session.IsAdmin)
+{
+    <div class="form-card">
+        <h2>Inventario inicial desde plantilla</h2>
+        <p>Descargue la plantilla CSV, complétela, cárguela y revise los datos antes de incorporarlos.</p>
+        <a class="button-link" href="PLANTILLA_INVENTARIO_INICIAL_NACO.csv" download>Descargar plantilla CSV</a>
+        <label class="file-picker">Cargar plantilla completada<InputFile OnChange="ReadCsv" accept=".csv,text/csv" /></label>
+        @if(importRows.Count>0)
+        {
+            <div class="table-wrap"><table><thead><tr><th>Ubicación</th><th>Producto</th><th>Medida</th><th>Pallets</th><th>Cajas/pallet</th><th>Ajuste</th><th>Total</th><th>Distribución</th></tr></thead><tbody>
+            @foreach(var row in importRows){<tr><td>@row.Ubicacion</td><td>@row.Producto</td><td>@row.Medida</td><td>@row.Pallets</td><td>@row.CajasPorPallet</td><td>@row.AjusteCajas</td><td>@row.TotalCajas</td><td>@row.Distribucion</td></tr>}
+            </tbody></table></div>
+            <button class="success wide" @onclick="Import" disabled="@busy">@(busy?"Incorporando…":$"INCORPORAR {importRows.Count:N0} REGISTROS")</button>
+        }
+    </div>
+    <div class="danger-zone"><h2>Limpiar datos de prueba</h2><p>Elimina inventario, movimientos, croquis, inventarios físicos e historial. Conserva usuarios y ubicaciones.</p><button class="danger" @onclick="AskClean">@(confirmClean?"CONFIRMAR LIMPIEZA":"LIMPIAR DATOS DE PRUEBA")</button></div>
+}
+@if(!string.IsNullOrWhiteSpace(message)){<div class="alert @messageClass">@message</div>}
+
+@code {
+    private string server="",database="",sqlUser="",sqlPassword="",message="",messageClass="error";
+    private bool confirmClean,busy;
+    private List<MigrationLine> importRows=[];
+
+    protected override void OnInitialized(){server=Settings.Server;database=Settings.Database;sqlUser=Settings.User;sqlPassword=Settings.Password;}
+
+    private async Task SaveSettings(){Settings.Server=server.Trim();Settings.Database=database.Trim();Settings.User=sqlUser.Trim();Settings.Password=sqlPassword;try{await Db.TestAsync();Success("Conexión correcta.");}catch(Exception ex){Fail(ex.Message);}}
+
+    private async Task ReadCsv(InputFileChangeEventArgs args)
+    {
+        importRows=[];message="";
+        try
+        {
+            using var reader=new StreamReader(args.File.OpenReadStream(5*1024*1024));var lines=new List<string>();while(await reader.ReadLineAsync() is { } line)lines.Add(line);
+            if(lines.Count<2)throw new InvalidOperationException("La plantilla no contiene productos.");
+            var expected="UBICACION;PRODUCTO;MEDIDA;PALLETS;CAJASPORPALLET;AJUSTECAJAS;DISTRIBUCION";if(NormalizeHeader(lines[0])!=expected)throw new InvalidOperationException("La plantilla no tiene las siete columnas esperadas. Descargue una plantilla nueva.");
+            var keys=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            for(var index=1;index<lines.Count;index++)
+            {
+                if(string.IsNullOrWhiteSpace(lines[index]))continue;var fields=ParseCsvLine(lines[index]);if(fields.Count!=7)throw new InvalidOperationException($"La fila {index+1} no tiene siete columnas.");
+                if(!int.TryParse(fields[3],out var pallets)||pallets<0||!int.TryParse(fields[4],out var cpp)||cpp<0||!int.TryParse(fields[5],out var adjustment))throw new InvalidOperationException($"Revise las cantidades de la fila {index+1}.");
+                var row=new MigrationLine{Ubicacion=fields[0].Trim().ToUpperInvariant(),Producto=fields[1].Trim(),Medida=fields[2].Trim(),Pallets=pallets,CajasPorPallet=cpp,AjusteCajas=adjustment,Distribucion=fields[6].Trim()};ValidateMigration(row,index+1);var key=$"{row.Ubicacion}\0{row.Producto}\0{row.Medida}";if(!keys.Add(key))throw new InvalidOperationException($"Producto repetido en {row.Ubicacion}: {row.Producto}.");importRows.Add(row);
+            }
+            if(importRows.Count==0)throw new InvalidOperationException("La plantilla no contiene productos.");Success($"Plantilla validada: {importRows.Count:N0} registros, {importRows.Sum(x=>x.Pallets):N0} pallets y {importRows.Sum(x=>(long)x.TotalCajas):N0} cajas.");
+        }
+        catch(Exception ex){importRows=[];Fail(ex.Message);}
+    }
+
+    private async Task Import(){busy=true;try{await Db.ImportInitialInventoryAsync(importRows);Success("Inventario inicial incorporado correctamente.");importRows=[];}catch(Exception ex){Fail(ex.Message);}finally{busy=false;}}
+    private async Task AskClean(){if(!confirmClean){confirmClean=true;Fail("Pulse nuevamente para confirmar la eliminación.");return;}try{await Db.CleanTestDataAsync();Success("Datos de prueba eliminados. Usuarios y ubicaciones se conservaron.");importRows=[];}catch(Exception ex){Fail(ex.Message);}finally{confirmClean=false;}}
+    private static string NormalizeHeader(string value)=>value.TrimStart('\uFEFF').Replace(" ","").ToUpperInvariant();
+    private static List<string> ParseCsvLine(string line){var result=new List<string>();var current=new System.Text.StringBuilder();var quoted=false;for(var i=0;i<line.Length;i++){var c=line[i];if(c=='\"'){if(quoted&&i+1<line.Length&&line[i+1]=='\"'){current.Append('\"');i++;}else quoted=!quoted;}else if(c==';'&&!quoted){result.Add(current.ToString().Trim());current.Clear();}else current.Append(c);}if(quoted)throw new InvalidOperationException("Hay comillas sin cerrar en la plantilla.");result.Add(current.ToString().Trim());return result;}
+    private static void ValidateMigration(MigrationLine row,int number){if(!System.Text.RegularExpressions.Regex.IsMatch(row.Ubicacion,"^[A-D](?:[1-9]|[1-4][0-9]|5[0-6])$"))throw new InvalidOperationException($"Ubicación no válida en la fila {number}. Use A1 a D56.");if(string.IsNullOrWhiteSpace(row.Producto)||row.Producto.Length>150||row.Medida.Length>50)throw new InvalidOperationException($"Producto o medida no válidos en la fila {number}.");if(row.Pallets>0&&row.CajasPorPallet==0||row.TotalCajas<=0)throw new InvalidOperationException($"Total de cajas no válido en la fila {number}.");var parts=row.Distribucion.Split(',',StringSplitOptions.RemoveEmptyEntries|StringSplitOptions.TrimEntries);if(row.Pallets>0&&(parts.Length==0||parts.Any(x=>!int.TryParse(x,out var n)||n<1||n>4)||parts.Sum(int.Parse)!=row.Pallets))throw new InvalidOperationException($"La distribución de la fila {number} debe sumar {row.Pallets} pallets.");}
+    private void Success(string text){message=text;messageClass="success";}
+    private void Fail(string text){message=text;messageClass="error";}
+}

@@ -1,0 +1,22 @@
+@page "/"
+@inject NacoDatabase Db
+@inject SessionState Session
+
+@if (!Session.IsAuthenticated)
+{
+    <div class="login-shell"><div class="login-card"><div class="brand-mark"><img src="logo_naco.png" alt="NACO" /></div><h1>Sistema NACO</h1><p>Control de almacén · versión macOS</p>
+        <label>Usuario</label><input @bind="user" autocomplete="username" />
+        <label>Contraseña</label><input type="password" @bind="password" autocomplete="current-password" @onkeyup="KeyUp" />
+        <button class="primary wide" @onclick="Login" disabled="@busy">@(busy ? "Conectando…" : "INICIAR SESIÓN")</button>
+        @if (!string.IsNullOrWhiteSpace(message)) { <div class="alert @alertClass">@message</div> }
+    </div></div>
+}
+else
+{
+    <div class="page-title"><div><h1>Panel principal</h1><p>@DateTime.Now.ToString("dd/MM/yyyy")</p></div><button class="secondary" @onclick="Logout">Cerrar sesión</button></div>
+    @if (summary is null) { <p>Cargando información…</p> }
+    else { <div class="metrics"><div class="metric"><span>Productos</span><strong>@summary.Productos.ToString("N0")</strong></div><div class="metric"><span>Pallets</span><strong>@summary.Pallets.ToString("N0")</strong></div><div class="metric"><span>Cajas</span><strong>@summary.Cajas.ToString("N0")</strong></div><div class="metric"><span>Movimientos hoy</span><strong>@summary.MovimientosHoy.ToString("N0")</strong></div></div>
+    <div class="action-grid"><a href="operacion/INGRESO" class="action-card green"><b>↓</b><span>Nuevo ingreso</span></a><a href="operacion/SALIDA" class="action-card red"><b>↑</b><span>Nueva salida</span></a><a href="operacion/MOVIMIENTO" class="action-card blue"><b>⇄</b><span>Mover producto</span></a><a href="croquis" class="action-card navy"><b>⌗</b><span>Ver croquis</span></a></div> }
+    @if (!string.IsNullOrWhiteSpace(message)) { <div class="alert error">@message</div> }
+}
+@code { private string user="",password="",message="",alertClass="error";private bool busy;private DashboardSummary? summary;protected override async Task OnInitializedAsync(){if(Session.IsAuthenticated)await Load();}private async Task Login(){busy=true;message="";var r=await Db.LoginAsync(user,password);busy=false;message=r.Message;alertClass=r.Ok?"success":"error";if(r.Ok){password="";await Load();}}private async Task Load(){try{summary=await Db.GetSummaryAsync();}catch(Exception ex){message=ex.Message;}}private async Task KeyUp(KeyboardEventArgs e){if(e.Key=="Enter")await Login();}private void Logout(){Session.Close();summary=null;message="";} }

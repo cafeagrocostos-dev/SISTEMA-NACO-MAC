@@ -1,0 +1,54 @@
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+<div class="warehouse-viewport" @ref="viewport">
+<div class="warehouse-map" style="zoom:@currentZoom.ToString(System.Globalization.CultureInfo.InvariantCulture)">
+@foreach(var section in Sections)
+{
+    var codes=Codes(section);
+    var sectionDepth=Math.Max(0,codes.SelectMany(code=>Items.Where(x=>x.Ubicacion.Equals(code,StringComparison.OrdinalIgnoreCase)).SelectMany(x=>x.Posiciones)).Select(x=>x.Posicion).DefaultIfEmpty(0).Max());
+    var sectionHasUndistributed=codes.Any(code=>{var stock=Items.Where(x=>x.Ubicacion.Equals(code,StringComparison.OrdinalIgnoreCase)&&(x.Pallets>0||x.Cajas>0)).ToList();var cells=stock.SelectMany(x=>x.Posiciones).ToList();return stock.Sum(x=>x.Pallets)!=cells.Sum(x=>(long)x.Pallets)||stock.Sum(x=>x.Cajas)!=cells.Sum(x=>x.Cajas);});
+    if(codes.Count>0)
+    {
+    <section class="warehouse-section"><h3>SECCIÓN @section</h3>
+    @foreach(var codeRow in codes.Chunk(28))
+    {
+    <div class="rack-row">
+    @foreach(var code in codeRow)
+    {
+        var stock=Items.Where(x=>x.Ubicacion.Equals(code,StringComparison.OrdinalIgnoreCase)&&(x.Pallets>0||x.Cajas>0)).ToList();
+        var cells=stock.SelectMany(x=>x.Posiciones).OrderBy(x=>x.Posicion).ToList();
+        var configuration=Items.FirstOrDefault(x=>x.Ubicacion.Equals(code,StringComparison.OrdinalIgnoreCase)&&x.OrdenCroquis>0);
+        var inverted=configuration?.InvertidoCroquis??(section is 'B' or 'D');var fillBottom=configuration?.LlenarDesdeAbajoCroquis??(inverted?FillBDBottom:FillACBottom);
+        var undistributedPallets=stock.Sum(x=>x.Pallets)-cells.Sum(x=>(long)x.Pallets);var undistributedBoxes=stock.Sum(x=>x.Cajas)-cells.Sum(x=>x.Cajas);
+        <div class="rack @(inverted?"inverted":"")">
+            <div class="rack-header"><div class="rack-code">@(code)</div><div class="rack-product" title="@string.Join(" / ",stock.Select(x=>x.Producto))">@string.Join(" / ",stock.Select(x=>x.Producto+(string.IsNullOrWhiteSpace(x.Medida)?"":" "+x.Medida)).Distinct())</div><div class="rack-cpp">@string.Join(" / ",stock.Select(x=>x.CajasPorPallet).Where(x=>x>0).Distinct())</div><div class="rack-pallets">@stock.Sum(x=>x.Pallets)</div><div class="rack-boxes">@stock.Sum(x=>x.Cajas).ToString("N0")</div></div>
+            <div class="rack-positions @(fillBottom?"fill-bottom":"")">@foreach(var position in Enumerable.Range(1,sectionDepth)){var cell=cells.FirstOrDefault(x=>x.Posicion==position);<div class="rack-cell @(cell is null?"empty":$"p{Math.Min(4,cell.Pallets)}")">@(cell is null?"":$"{cell.Pallets} P ({cell.Cajas:N0})")</div>}</div>
+            @if(sectionHasUndistributed){<div class="undistributed @(undistributedPallets==0&&undistributedBoxes==0?"empty":"")">@if(undistributedPallets!=0||undistributedBoxes!=0){<text>SIN DISTRIBUCIÓN<br />@undistributedPallets P (@undistributedBoxes.ToString("N0"))</text>}</div>}
+            @foreach(var action in Actions.Where(a=>a.Location.Equals(code,StringComparison.OrdinalIgnoreCase))){<div class="croquis-action"><strong>@(action.Incoming?"↓":"↑") @action.Text</strong><br />@action.Pallets P (@action.Boxes.ToString("N0") cajas)</div>}
+        </div>
+    }
+    </div>
+    }
+    </section>
+    }
+}
+</div></div>
+
+@code{
+ [Parameter]public IReadOnlyList<InventoryItem> Items{get;set;}=[];
+ [Parameter]public string Sections{get;set;}="ABCD";
+ [Parameter]public string OnlyLocation{get;set;}="";
+ [Parameter]public bool FillACBottom{get;set;}
+ [Parameter]public bool FillBDBottom{get;set;}=true;
+ [Parameter]public double Zoom{get;set;}=1;
+ [Parameter]public EventCallback<double> ZoomChanged{get;set;}
+ [Parameter]public int Part{get;set;}
+ [Parameter]public IReadOnlyList<MapAction> Actions{get;set;}=[];
+ private ElementReference viewport;private DotNetObjectReference<WarehouseMap>? reference;private double currentZoom=1;private bool initialized;
+ protected override void OnParametersSet(){currentZoom=Math.Clamp(Zoom,.35,2.5);}
+ protected override async Task OnAfterRenderAsync(bool firstRender){if(firstRender){reference=DotNetObjectReference.Create(this);await JS.InvokeVoidAsync("nacoCroquis.init",viewport,reference);initialized=true;}}
+ [JSInvokable]public async Task WheelZoom(double delta){currentZoom=Math.Clamp(currentZoom*(delta<0?1.12:1/1.12),.35,2.5);if(ZoomChanged.HasDelegate)await ZoomChanged.InvokeAsync(currentZoom);StateHasChanged();}
+ public async ValueTask DisposeAsync(){if(initialized)try{await JS.InvokeVoidAsync("nacoCroquis.dispose",viewport);}catch{}reference?.Dispose();}
+ private List<string> Codes(char section){if(!string.IsNullOrWhiteSpace(OnlyLocation)){var normalized=OnlyLocation.Trim().ToUpperInvariant();return normalized.StartsWith(section)&&System.Text.RegularExpressions.Regex.IsMatch(normalized,"^[A-D][1-9][0-9]*$")?[normalized]:[];}var configured=Items.Where(x=>x.OrdenCroquis>0&&x.SeccionCroquis.Equals(section.ToString(),StringComparison.OrdinalIgnoreCase)).OrderBy(x=>x.OrdenCroquis).Select(x=>x.Ubicacion.Trim().ToUpperInvariant()).Distinct(StringComparer.OrdinalIgnoreCase).ToList();var all=configured.Count>0?configured:Enumerable.Range(1,56).Select(n=>$"{section}{n}").ToList();var middle=(int)Math.Ceiling(all.Count/2d);return Part switch{1=>all.Take(middle).ToList(),2=>all.Skip(middle).ToList(),_=>all};}
+}
+

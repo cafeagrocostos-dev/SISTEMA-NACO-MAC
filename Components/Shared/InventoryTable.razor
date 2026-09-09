@@ -1,0 +1,2 @@
+<div class="table-wrap"><table><thead><tr><th>Ubicación</th><th>Producto</th><th>Medida</th><th>Pallets</th><th>Cajas/pallet</th><th>Total cajas</th></tr></thead><tbody>@foreach(var row in Rows){<tr><td>@row.Ubicacion</td><td>@row.Producto</td><td>@row.Medida</td><td>@row.Pallets</td><td>@row.CajasPorPallet</td><td>@row.Cajas.ToString("N0")</td></tr>}</tbody></table></div>
+@code { [Parameter] public IReadOnlyList<InventoryItem> Rows {get;set;}=[]; }

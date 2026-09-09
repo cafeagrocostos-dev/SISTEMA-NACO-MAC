@@ -1,0 +1,62 @@
+@page "/operacion/{Type}"
+@inject NacoDatabase Db
+@inject SessionState Session
+
+<div class="page-title"><div><h1>@Title</h1><p>Prepare los productos y guarde la operación completa.</p></div></div>
+@if(!Session.IsAuthenticated){<div class="alert error">Inicie sesión para registrar operaciones.</div>}
+else if(!Session.CanEdit){<div class="alert error">Su usuario tiene acceso de consulta.</div>}
+else{
+<div class="form-card"><div class="form-grid"><label>Fecha<input type="datetime-local" @bind="operationDate" /></label><label>Referencia / contenedor<input @bind="reference" /></label><label>Enviado a<input @bind="sentTo" /></label><label>@ReceiverLabel<input @bind="receivedBy" /></label><label class="span-2">Observaciones<textarea @bind="notes"></textarea></label></div></div>
+<div class="form-card"><h2>Producto</h2><div class="form-grid product-grid">
+@if(Type=="INGRESO") {
+    <label>Ubicación<input list="location-list" placeholder="Escriba, por ejemplo A57" @bind="location" /></label>
+    <datalist id="location-list">@foreach(var u in locations){<option value="@u"></option>}</datalist>
+    <label>Producto<input list="product-list" value="@product" @oninput="ProductInput" autocomplete="off" /></label>
+    <datalist id="product-list">@foreach(var item in catalog.Select(x=>x.Producto).Distinct(StringComparer.OrdinalIgnoreCase)){<option value="@item"></option>}</datalist>
+    <label>Medida<input @bind="measure" /></label>
+} else {
+    <label class="span-2">Existencia<select value="@selectedId" @onchange="SelectStock"><option value="0">Seleccione producto…</option>@foreach(var x in inventory.Where(x=>x.IdInventario>0)){<option value="@x.IdInventario">@x.Ubicacion · @x.Producto · @x.Medida · @x.Pallets P · @x.Cajas C</option>}</select></label>
+    @if(Type=="MOVIMIENTO"){<label>Destino<input list="location-list" placeholder="Escriba una ubicación" @bind="destination" /></label><datalist id="location-list">@foreach(var u in locations.Where(x=>x!=location)){<option value="@u"></option>}</datalist>}
+}
+<label>Pallets<input type="number" min="0" @bind="pallets" @bind:event="oninput" /></label><label>Cajas por pallet<input type="number" min="0" @bind="boxesPerPallet" @bind:event="oninput" /></label><label>Adicionales<input type="number" min="0" @bind="extra" @bind:event="oninput" /></label><label>Faltantes<input type="number" min="0" @bind="missing" @bind:event="oninput" /></label>
+@if(NeedsDistribution){<label>Distribución rápida<input placeholder="Ej. 2,2,1" @bind="distribution" @bind:event="oninput" /></label>}
+<div class="total-box"><span>Total cajas</span><strong>@Total.ToString("N0")</strong></div></div>
+
+@if(NeedsDistribution){
+<div class="distribution-status @(DistributionComplete?"complete":"pending")"><div><span>@(Type=="INGRESO"?"Pallets recibidos":"Pallets a mover")</span><b>@pallets</b></div><div><span>Pallets distribuidos</span><b>@Distributed</b></div><div><span>Pallets pendientes</span><b>@Pending</b></div><strong>@DistributionMessage</strong></div>
+@if(DistributionRows.Count>0){<div class="table-wrap distribution-table"><table><thead><tr><th>Fila</th><th>Pallets</th><th>Cajas/pallet</th><th>Ajuste</th><th>Total cajas</th></tr></thead><tbody>@foreach(var row in DistributionRows){<tr><td>@row.Row</td><td>@row.Pallets</td><td>@boxesPerPallet</td><td>@row.Adjustment</td><td>@row.Total.ToString("N0")</td></tr>}</tbody></table></div>}}
+<button class="primary" @onclick="AddOrUpdateLine">@(editingIndex>=0?"MODIFICAR PRODUCTO":"AÑADIR AL CUADRO")</button>@if(editingIndex>=0){<button class="secondary" @onclick="ResetProduct">Cancelar modificación</button>}</div>
+
+<div class="form-card"><h2>Cuadro temporal</h2><div class="table-wrap"><table><thead><tr><th>Ubicación</th><th>@TemporarySecondTitle</th><th>Producto</th><th>Medida</th><th>Pallets</th><th>Total cajas</th><th></th></tr></thead><tbody>@foreach(var pair in lines.Select((line,index)=>(line,index))){<tr><td>@pair.line.Ubicacion</td><td>@TemporarySecondValue(pair.line)</td><td>@pair.line.Producto</td><td>@pair.line.Medida</td><td>@pair.line.Pallets</td><td>@pair.line.TotalCajas</td><td><button class="secondary small" @onclick="()=>EditLine(pair.index)">Modificar</button> <button class="danger small" @onclick="()=>Remove(pair.line)">Suprimir</button></td></tr>}</tbody></table></div><button class="success wide" @onclick="Save" disabled="@busy">@(busy?"Guardando…":"GUARDAR OPERACIÓN")</button></div>
+@if(lines.Count>0){<div class="form-card"><h2>Vista previa del croquis</h2><p>Así quedará el almacén al guardar esta operación.</p><WarehouseMap Items="Preview" Sections="ABCD" Zoom="0.72" /></div>}}
+@if(!string.IsNullOrWhiteSpace(message)){<div class="alert @messageClass">@message</div>}
+
+@code {
+ [Parameter]public string Type{get;set;}="INGRESO";
+ private List<string> locations=[];private List<InventoryItem> inventory=[];private List<ProductCatalogItem> catalog=[];private List<OperationLine> lines=[];
+ private DateTime operationDate=DateTime.Now;private string reference="",sentTo="",receivedBy="",notes="",location="",destination="",product="",measure="",distribution="",message="",messageClass="error";
+ private long selectedId;private int pallets,boxesPerPallet,extra,missing,editingIndex=-1;private bool busy;
+ private string Title=>Type switch{"INGRESO"=>"Nuevo ingreso","SALIDA"=>"Nueva salida","MOVIMIENTO"=>"Movimiento entre ubicaciones",_=>"Salida por daño"};
+ private string ReceiverLabel=>Type=="INGRESO"?"Recibido por":"Entregado por";
+ private string TemporarySecondTitle=>Type switch{"INGRESO"=>"Distribución","SALIDA"=>"Enviado a","SALIDA POR DAÑO"=>"Enviado a",_=>"Destino"};
+ private string TemporarySecondValue(OperationLine line)=>Type=="INGRESO"?line.Distribucion:Type=="MOVIMIENTO"?line.MovidoA:sentTo;
+ private bool NeedsDistribution=>Type is "INGRESO" or "MOVIMIENTO";
+ private List<InventoryItem> Preview=>CroquisProjection.Project(inventory,lines,Type);
+ private long Total=>(long)pallets*boxesPerPallet+extra-missing;
+ private List<int> DistributionParts=>distribution.Split(',',StringSplitOptions.RemoveEmptyEntries|StringSplitOptions.TrimEntries).Select(x=>int.TryParse(x,out var n)?n:-1).ToList();
+ private int Distributed=>DistributionParts.Where(x=>x>0&&x<=4).Sum();private int Pending=>Math.Max(0,pallets-Distributed);
+ private bool DistributionComplete=>pallets>0&&DistributionParts.Count>0&&DistributionParts.All(x=>x is >=1 and <=4)&&Distributed==pallets;
+ private string DistributionMessage=>DistributionParts.Any(x=>x<1||x>4)?"Use solamente números de 1 a 4 separados por comas.":DistributionComplete?"Distribución completa.":Distributed>pallets?$"Sobran {Distributed-pallets} pallets en la distribución.":$"Faltan {Pending} pallets por colocar.";
+ private List<DistributionPreviewRow> DistributionRows{get{var result=new List<DistributionPreviewRow>();long missingLeft=missing;for(var i=0;i<DistributionParts.Count;i++){var p=DistributionParts[i];if(p<1||p>4)continue;long adjustment=i==DistributionParts.Count-1?extra:0;var total=(long)p*boxesPerPallet+adjustment;if(i==DistributionParts.Count-1){var take=Math.Min(total,missingLeft);adjustment-=take;total-=take;missingLeft-=take;}result.Add(new(){Row=i+1,Pallets=p,Adjustment=adjustment,Total=total});}for(var i=result.Count-1;i>=0&&missingLeft>0;i--){var take=Math.Min(result[i].Total,missingLeft);result[i].Adjustment-=take;result[i].Total-=take;missingLeft-=take;}return result;}}
+
+ protected override async Task OnParametersSetAsync(){Type=Uri.UnescapeDataString(Type).ToUpperInvariant();if(Session.IsAuthenticated){locations=await Db.GetLocationsAsync();inventory=await Db.GetInventoryAsync(false,true);catalog=await Db.GetProductCatalogAsync();}ResetProduct();}
+ private void ProductInput(ChangeEventArgs e){product=Convert.ToString(e.Value)??"";var item=catalog.FirstOrDefault(x=>x.Producto.Equals(product.Trim(),StringComparison.OrdinalIgnoreCase)&&x.Medida.Equals(measure.Trim(),StringComparison.OrdinalIgnoreCase))??catalog.FirstOrDefault(x=>x.Producto.Equals(product.Trim(),StringComparison.OrdinalIgnoreCase));if(item is not null){measure=item.Medida;boxesPerPallet=item.CajasPorPallet;}}
+ private void SelectStock(ChangeEventArgs e){selectedId=long.TryParse(Convert.ToString(e.Value),out var id)?id:0;var x=inventory.FirstOrDefault(i=>i.IdInventario==selectedId);if(x is null)return;location=x.Ubicacion;product=x.Producto;measure=x.Medida;boxesPerPallet=x.CajasPorPallet;}
+ private void AddOrUpdateLine(){message="";location=location.Trim().ToUpperInvariant();destination=destination.Trim().ToUpperInvariant();if(!System.Text.RegularExpressions.Regex.IsMatch(location,"^[A-D][1-9][0-9]*$")||string.IsNullOrWhiteSpace(product)||pallets<0||boxesPerPallet<0||Total<=0||(pallets>0&&boxesPerPallet<=0)){Fail("Complete los datos y use una ubicación válida, por ejemplo A1.");return;}if(Type!="INGRESO"&&selectedId==0){Fail("Seleccione una existencia del inventario.");return;}if(Type=="MOVIMIENTO"&&(string.IsNullOrWhiteSpace(destination)||destination==location)){Fail("Seleccione un destino distinto.");return;}if(NeedsDistribution&&!DistributionComplete){Fail(DistributionMessage);return;}var line=new OperationLine{IdInventario=selectedId,IdOrigen=inventory.FirstOrDefault(x=>x.IdInventario==selectedId)?.IdUbicacion??0,Ubicacion=location,MovidoA=destination,Producto=product.Trim(),Medida=measure.Trim(),Pallets=pallets,CajasPorPallet=boxesPerPallet,Adicionales=extra,Faltantes=missing,TotalCajas=(int)Total,Distribucion=distribution.Trim()};if(editingIndex>=0)lines[editingIndex]=line;else lines.Add(line);ResetProduct();}
+ private void EditLine(int index){var line=lines[index];editingIndex=index;selectedId=line.IdInventario;location=line.Ubicacion;destination=line.MovidoA;product=line.Producto;measure=line.Medida;pallets=line.Pallets;boxesPerPallet=line.CajasPorPallet;extra=line.Adicionales;missing=line.Faltantes;distribution=line.Distribucion;}
+ private void Remove(OperationLine line){lines.Remove(line);if(editingIndex>=lines.Count)ResetProduct();}
+ private void ResetProduct(){editingIndex=-1;selectedId=0;location=destination=product=measure=distribution="";pallets=boxesPerPallet=extra=missing=0;}
+ private async Task Save(){busy=true;message="";try{var id=await Db.SaveOperationAsync(Type,operationDate,reference,sentTo,receivedBy,notes,lines);lines=[];reference=sentTo=receivedBy=notes="";inventory=await Db.GetInventoryAsync(false,true);catalog=await Db.GetProductCatalogAsync();Success($"Operación guardada. Movimiento N.º {id}.");}catch(Exception ex){Fail(ex.Message);}finally{busy=false;}}
+ private void Success(string text){message=text;messageClass="success";}private void Fail(string text){message=text;messageClass="error";}
+ private sealed class DistributionPreviewRow{public int Row{get;set;}public int Pallets{get;set;}public long Adjustment{get;set;}public long Total{get;set;}}
+}

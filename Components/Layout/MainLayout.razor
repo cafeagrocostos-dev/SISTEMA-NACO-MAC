@@ -1,0 +1,26 @@
+﻿@inherits LayoutComponentBase
+
+@inject SessionState Session
+@implements IDisposable
+
+<div class="page">
+    <div class="sidebar">
+        <NavMenu />
+    </div>
+
+    <main>
+        <div class="top-row px-4">
+            <span>@(Session.IsAuthenticated ? $"{Session.NombreCompleto} · {Session.Rol}" : "SISTEMA NACO PARA macOS")</span>
+        </div>
+
+        <article class="content px-4">
+            @Body
+        </article>
+    </main>
+</div>
+
+@code {
+    protected override void OnInitialized() => Session.Changed += Refresh;
+    private void Refresh() => InvokeAsync(StateHasChanged);
+    public void Dispose() => Session.Changed -= Refresh;
+}

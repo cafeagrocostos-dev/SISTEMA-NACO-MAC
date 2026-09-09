@@ -1,0 +1,8 @@
+@page "/inventario"
+@inject NacoDatabase Db
+@inject SessionState Session
+<div class="page-title"><div><h1>Inventario actual</h1><p>Existencias consolidadas por ubicación</p></div><button class="primary" @onclick="Load">Actualizar</button></div>
+<input class="search" placeholder="Buscar producto, medida o ubicación" @bind="search" @bind:event="oninput" />
+@if(!Session.IsAuthenticated){<div class="alert error">Inicie sesión para consultar el inventario.</div>}else if(busy){<p>Cargando…</p>}else{<InventoryTable Rows="Filtered.ToList()" />}
+@if(!string.IsNullOrWhiteSpace(error)){<div class="alert error">@error</div>}
+@code { private List<InventoryItem> rows=[];private string search="",error="";private bool busy;private IEnumerable<InventoryItem> Filtered=>rows.Where(x=>string.IsNullOrWhiteSpace(search)||(x.Ubicacion+" "+x.Producto+" "+x.Medida).Contains(search,StringComparison.OrdinalIgnoreCase));protected override async Task OnInitializedAsync(){if(Session.IsAuthenticated)await Load();}private async Task Load(){busy=true;error="";try{rows=await Db.GetInventoryAsync();}catch(Exception ex){error=ex.Message;}finally{busy=false;}} }

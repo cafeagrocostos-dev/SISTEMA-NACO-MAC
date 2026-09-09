@@ -1,0 +1,8 @@
+@page "/reportes"
+@inject NacoDatabase Db
+@inject SessionState Session
+<div class="page-title"><div><h1>Reportes de movimientos</h1><p>Consulte ingresos, salidas y movimientos guardados.</p></div><button class="primary" @onclick="Load">Consultar</button></div>
+<div class="filter-row"><label>Desde<input type="date" @bind="fromDate" /></label><label>Hasta<input type="date" @bind="toDate" /></label><label>Tipo<select @bind="type"><option>TODOS</option><option>INGRESO</option><option>SALIDA</option><option>MOVIMIENTO</option><option>SALIDA POR DAÑO</option></select></label></div>
+@if(!Session.IsAuthenticated){<div class="alert error">Inicie sesión.</div>}else{<div class="table-wrap"><table><thead><tr><th>N.º</th><th>Fecha</th><th>Tipo</th><th>Referencia</th><th>Pallets</th><th>Cajas</th><th>Usuario</th><th></th></tr></thead><tbody>@foreach(var r in rows){<tr><td>@r.IdMovimiento</td><td>@r.FechaMovimiento.ToString("dd/MM/yyyy HH:mm")</td><td><span class="badge">@r.TipoMovimiento</span></td><td>@r.Referencia</td><td>@r.Pallets</td><td>@r.Cajas.ToString("N0")</td><td>@r.Usuario</td><td><a class="button-link" href="reporte/@r.IdMovimiento">Ver / PDF</a></td></tr>}</tbody></table></div>}
+@if(!string.IsNullOrWhiteSpace(error)){<div class="alert error">@error</div>}
+@code {private DateTime fromDate=DateTime.Today.AddMonths(-1),toDate=DateTime.Today;private string type="TODOS",error="";private List<MovementRow> rows=[];protected override async Task OnInitializedAsync(){if(Session.IsAuthenticated)await Load();}private async Task Load(){try{rows=await Db.GetMovementsAsync(fromDate,toDate,type);}catch(Exception ex){error=ex.Message;}}}
