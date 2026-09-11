@@ -1,0 +1,26 @@
+SISTEMA NACO V11.8 PARA macOS
+================================
+
+Esta versión incorpora el nuevo icono de Sistema NACO y el flujo de GitHub
+genera dos formatos:
+
+1. Sistema-NACO-Mac.dmg (recomendado)
+   - Abra el archivo DMG.
+   - Arrastre "Sistema NACO" a "Aplicaciones".
+   - Abra Sistema NACO desde Aplicaciones.
+
+2. Sistema-NACO-Mac.zip
+   - Descomprima el ZIP.
+   - Mueva "Sistema NACO.app" a Aplicaciones.
+
+La aplicación incluye el runtime necesario; no se necesita instalar .NET en
+la Mac para usarla.
+
+PRIMERA APERTURA SIN FIRMA DE APPLE
+------------------------------------
+Esta compilación no está firmada con una cuenta Apple Developer. Si macOS la
+bloquea la primera vez, haga clic derecho sobre Sistema NACO, elija "Abrir" y
+confirme "Abrir". Las siguientes aperturas serán normales.
+
+La Mac debe tener acceso por red al mismo servidor SQL configurado para que
+Windows y macOS compartan usuarios, inventario, movimientos y croquis.

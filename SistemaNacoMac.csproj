@@ -37,8 +37,8 @@
         <ApplicationId>hn.cafeagro.sistemanaco</ApplicationId>
 
         <!-- Versions -->
-        <ApplicationDisplayVersion>11.7</ApplicationDisplayVersion>
-        <ApplicationVersion>18</ApplicationVersion>
+        <ApplicationDisplayVersion>11.8</ApplicationDisplayVersion>
+        <ApplicationVersion>19</ApplicationVersion>
 
         <!-- Release universal para equipos Mac Intel y Apple Silicon. -->
         <RuntimeIdentifiers Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'maccatalyst' and '$(Configuration)' == 'Release'">maccatalyst-x64;maccatalyst-arm64</RuntimeIdentifiers>
@@ -55,7 +55,7 @@
 
     <ItemGroup>
         <!-- App Icon -->
-        <MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="#0B5D4B" />
+        <MauiIcon Include="Resources\AppIcon\sistema_naco.png" />
 
         <!-- Splash Screen -->
         <MauiSplashScreen Include="Resources\Splash\splash.svg" Color="#0B5D4B" BaseSize="128,128" />
