@@ -1,4 +1,4 @@
-name: Compilar para Mac
+name: Compilar aplicación para Mac
 
 on:
   workflow_dispatch:
@@ -22,7 +22,7 @@ jobs:
       - name: Instalar herramientas para Mac
         run: dotnet workload install maui-maccatalyst
 
-      - name: Comprobar archivos y crear aplicación
+      - name: Crear aplicación universal
         shell: bash
         run: |
           set -euo pipefail
@@ -33,25 +33,31 @@ jobs:
           fi
 
           DIR=$(dirname "$PROJECT")
-          if [ ! -f "$DIR/Resources/Splash/splash.svg" ]; then
-            echo "ERROR: falta Resources/Splash/splash.svg"
-            echo "Suba la carpeta Resources completa."
+          ICON="$DIR/Resources/AppIcon/sistema_naco.png"
+          if [ ! -f "$ICON" ]; then
+            echo "ERROR: falta el icono $ICON"
             exit 1
           fi
 
           dotnet publish "$PROJECT" \
             -f net10.0-maccatalyst \
             -c Release \
+            --self-contained true \
             -p:CreatePackage=false \
             -p:EnableCodeSigning=false \
             -p:EnablePackageSigning=false
 
-      - name: Preparar descarga
+      - name: Preparar ZIP y DMG
         shell: bash
         run: |
           set -euo pipefail
-          APP=$(find . -type d -name '*.app' \
+          APP=$(find . -type d -name 'Sistema NACO.app' \
             -path '*/bin/Release/*' -print -quit)
+
+          if [ -z "$APP" ]; then
+            APP=$(find . -type d -name '*.app' \
+              -path '*/bin/Release/*' -print -quit)
+          fi
 
           if [ -z "$APP" ]; then
             echo "ERROR: no se generó la aplicación .app"
@@ -61,9 +67,21 @@ jobs:
           ditto -c -k --sequesterRsrc --keepParent \
             "$APP" Sistema-NACO-Mac.zip
 
+          mkdir -p dmg-contenido
+          ditto "$APP" "dmg-contenido/Sistema NACO.app"
+          ln -s /Applications "dmg-contenido/Aplicaciones"
+          hdiutil create \
+            -volname "Sistema NACO" \
+            -srcfolder dmg-contenido \
+            -ov \
+            -format UDZO \
+            Sistema-NACO-Mac.dmg
+
       - name: Guardar aplicación
         uses: actions/upload-artifact@v4
         with:
-          name: Sistema-NACO-Mac
-          path: Sistema-NACO-Mac.zip
+          name: Sistema-NACO-Mac-V11-8
+          path: |
+            Sistema-NACO-Mac.dmg
+            Sistema-NACO-Mac.zip
           if-no-files-found: error
