@@ -1,0 +1,13 @@
+SISTEMA NACO V11.8 - APPLE SILICON
+===================================
+
+Esta compilación es exclusiva para equipos Mac con procesador Apple:
+M1, M2, M3, M4 y generaciones posteriores (arquitectura arm64).
+
+Archivo recomendado: Sistema-NACO-Apple-Silicon.dmg
+
+1. Abra el archivo DMG.
+2. Arrastre Sistema NACO a la carpeta Aplicaciones.
+3. Abra Sistema NACO desde Aplicaciones.
+
+La aplicación incluye el runtime de .NET y conserva el nuevo icono.
