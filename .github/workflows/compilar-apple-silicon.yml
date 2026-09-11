@@ -32,12 +32,16 @@ jobs:
             exit 1
           fi
 
+          # Esta compilación usa únicamente ARM64. El proyecto normal conserva
+          # ambos destinos para la edición universal.
+          sed -i '' \
+            's#maccatalyst-x64;maccatalyst-arm64#maccatalyst-arm64#g' \
+            "$PROJECT"
+
           dotnet publish "$PROJECT" \
             -f net10.0-maccatalyst \
             -c Release \
-            -r maccatalyst-arm64 \
             --self-contained true \
-            -p:RuntimeIdentifiers=maccatalyst-arm64 \
             -p:CreatePackage=false \
             -p:EnableCodeSigning=false \
             -p:EnablePackageSigning=false
@@ -80,4 +84,3 @@ jobs:
             Sistema-NACO-Apple-Silicon.dmg
             Sistema-NACO-Apple-Silicon.zip
           if-no-files-found: error
-
