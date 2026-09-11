@@ -1,0 +1,83 @@
+name: Compilar para Apple Silicon
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compilar_apple_silicon:
+    runs-on: macos-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Instalar herramientas para Mac
+        run: dotnet workload install maui-maccatalyst
+
+      - name: Crear aplicación Apple Silicon
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT=$(find . -name SistemaNacoMac.csproj -print -quit)
+          if [ -z "$PROJECT" ]; then
+            echo "ERROR: falta SistemaNacoMac.csproj"
+            exit 1
+          fi
+
+          dotnet publish "$PROJECT" \
+            -f net10.0-maccatalyst \
+            -c Release \
+            -r maccatalyst-arm64 \
+            --self-contained true \
+            -p:RuntimeIdentifiers=maccatalyst-arm64 \
+            -p:CreatePackage=false \
+            -p:EnableCodeSigning=false \
+            -p:EnablePackageSigning=false
+
+      - name: Preparar instalador Apple Silicon
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP=$(find . -type d -name 'Sistema NACO.app' \
+            -path '*/bin/Release/*maccatalyst-arm64*' -print -quit)
+
+          if [ -z "$APP" ]; then
+            APP=$(find . -type d -name '*.app' \
+              -path '*/bin/Release/*maccatalyst-arm64*' -print -quit)
+          fi
+
+          if [ -z "$APP" ]; then
+            echo "ERROR: no se generó la aplicación Apple Silicon"
+            exit 1
+          fi
+
+          ditto -c -k --sequesterRsrc --keepParent \
+            "$APP" Sistema-NACO-Apple-Silicon.zip
+
+          mkdir -p dmg-contenido
+          ditto "$APP" "dmg-contenido/Sistema NACO.app"
+          ln -s /Applications "dmg-contenido/Aplicaciones"
+          hdiutil create \
+            -volname "Sistema NACO Apple Silicon" \
+            -srcfolder dmg-contenido \
+            -ov \
+            -format UDZO \
+            Sistema-NACO-Apple-Silicon.dmg
+
+      - name: Guardar aplicación Apple Silicon
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sistema-NACO-Apple-Silicon-V11-8
+          path: |
+            Sistema-NACO-Apple-Silicon.dmg
+            Sistema-NACO-Apple-Silicon.zip
+          if-no-files-found: error
+
